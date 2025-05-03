@@ -35,7 +35,7 @@ export const tools = [
         type: "function",
         function: {
             name: "read_file",
-            description: `Read the content of a specific text file. Limited to ${MAX_DIRECT_READ_SIZE / 1024}KB.`,
+            description: `Read the content of a specific text file in host. Use this directly instead of 'cat' or similar commands. Limited to ${MAX_DIRECT_READ_SIZE / 1024}KB.`,
             parameters: {
                 type: "object",
                 properties: { filepath: { type: "string", description: "Path of the file to read." } },
@@ -47,7 +47,7 @@ export const tools = [
         type: "function",
         function: {
             name: "list_directory",
-            description: "List the contents of a directory.",
+            description: "List the contents of a directory in host. Use this directly instead of 'ls' or similar commands.",
             parameters: {
                 type: "object",
                 properties: {
@@ -61,7 +61,7 @@ export const tools = [
         type: "function",
         function: {
             name: "write_file",
-            description: "Write or overwrite a file with the provided content. ",
+            description: "Write or overwrite a file with the provided content in host. Always check if file exists first with read_file to preserve content when appropriate.",
             parameters: {
                 type: "object",
                 properties: {
@@ -136,7 +136,8 @@ export const tools = [
                 type: "object",
                 properties: {
                     command: { type: "string", description: "Full shell command to execute." },
-                    purpose: { type: "string", description: "Phrase explaining why this command should be executed." }
+                    purpose: { type: "string", description: "Phrase explaining why this command should be executed." },
+                    timeoutMs: { type: "integer", description: `Timeout in milliseconds for command execution. Default is ${COMMAND_TIMEOUT_MS}ms.` }
                 },
                 required: ["command", "purpose"],
             },

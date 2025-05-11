@@ -17,8 +17,24 @@ export interface ActionLogEntry {
     errorMsg?: string | null;
 }
 
+/**
+ * New hierarchical structure for agent memory
+ * - Use logs/actions instead of action_log
+ * - Use system/info instead of system_info
+ */
 export interface AgentMemory {
-    system_info: any;
-    action_log: ActionLogEntry[];
+    logs?: {
+        actions: ActionLogEntry[];
+        [key: string]: any;
+    };
+    system?: {
+        info: any;
+        [key: string]: any;
+    };
     notes: string;
+    // Support for legacy format (temporary, will be removed in future)
+    system_info?: any;
+    action_log?: ActionLogEntry[];
+    // Allow arbitrary properties for extensibility
+    [key: string]: any;
 }

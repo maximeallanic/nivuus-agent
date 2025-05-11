@@ -13,5 +13,15 @@ export const OPENAI_API_KEY: string = process.env.OPENAI_API_KEY || "sk-YOUR_API
 // Model to use (e.g., gpt-4-turbo, gpt-3.5-turbo)
 export const MODEL_NAME: string = "gpt-4.1";
 
-export { HISTORY_FILE, MEMORY_FILE, MAX_ACTION_LOG_ENTRIES, MAX_DIRECT_READ_SIZE, MAX_SEARCH_RESULTS, COMMAND_TIMEOUT_MS, MAX_FEEDBACK_LEN } from './configPaths.js';
+export { 
+  HISTORY_FILE, 
+  MEMORY_FILE, 
+  MAX_ACTION_LOG_ENTRIES, 
+  MAX_HISTORY_LENGTH,
+  MAX_DIRECT_READ_SIZE, 
+  MAX_SEARCH_RESULTS, 
+  COMMAND_TIMEOUT_MS, 
+  MAX_FEEDBACK_LEN,
+  MAX_COMMAND_OUTPUT_LENGTH
+} from './configPaths.js';
 export { default_system_prompt_template } from './systemPrompt.js';

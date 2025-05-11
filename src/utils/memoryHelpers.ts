@@ -10,15 +10,12 @@ export function updateMemory(
     status: ActionStatus,
     errorMsg: string | null | undefined = null
 ): void {
-    // Validate memory object and initialize action_log if necessary
-    if (!memory || typeof memory !== 'object' || !memory.action_log) {
-        if (memory && typeof memory === 'object') {
-            (memory as AgentMemory).action_log = [];
-        } else {
-            console.error(chalk.red(t('invalidMemoryUpdate')));
-            return;
-        }
+    // Validate memory object
+    if (!memory || typeof memory !== 'object') {
+        console.error(chalk.red(t('invalidMemoryUpdate')));
+        return;
     }
+
     // Create a new log entry with timestamp and action details
     const timestamp = new Date().toISOString();
     const logEntry: ActionLogEntry = {
@@ -30,9 +27,28 @@ export function updateMemory(
     if (errorMsg) {
         logEntry.errorMsg = errorMsg;
     }
-    // Add the new log entry to the action_log
+
+    // Mise à jour pour la nouvelle structure hiérarchique
+    // 1. S'assurer que logs.actions existe
+    if (!memory.logs) {
+        memory.logs = { actions: [] };
+    } else if (!memory.logs.actions) {
+        memory.logs.actions = [];
+    }
+    
+    // Ajouter l'entrée dans la nouvelle structure
+    memory.logs.actions.push(logEntry);
+    
+    // Garder logs.actions dans la limite de taille
+    if (memory.logs.actions.length > MAX_ACTION_LOG_ENTRIES) {
+        memory.logs.actions.shift();
+    }
+    
+    // Rétrocompatibilité avec l'ancienne structure
+    if (!memory.action_log) {
+        memory.action_log = [];
+    }
     memory.action_log.push(logEntry);
-    // Ensure the action_log does not exceed the maximum allowed entries
     if (memory.action_log.length > MAX_ACTION_LOG_ENTRIES) {
         memory.action_log.shift();
     }

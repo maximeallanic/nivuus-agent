@@ -1,7 +1,7 @@
 import { spawn, ChildProcess, SpawnOptions } from 'node:child_process';
 import chalk from 'chalk';
 import { t, updateMemory, getUserConfirmation } from '../utils.js';
-import { COMMAND_TIMEOUT_MS } from '../config/config.js';
+import { COMMAND_TIMEOUT_MS, MAX_COMMAND_OUTPUT_LENGTH } from '../config/config.js';
 import type { AgentMemory, ActionStatus } from '../agent/types.js';
 
 let agentMemoryRef: AgentMemory | null = null;
@@ -91,11 +91,28 @@ export async function runCommand(command: string, purpose: string, timeoutMs?: n
             if (stdoutOutput) fullRawOutput += `${t('commandOutputStdout')}\n${stdoutOutput.trim()}\n`;
             const finalStderr = `${stderrOutput.trim()} ${timeoutMsg}`.trim();
             fullRawOutput += `${t('commandOutputStderr')}\n${finalStderr}\n`;
+            
+            // Tronquer la sortie si elle dépasse MAX_COMMAND_OUTPUT_LENGTH
+            let displayOutput = fullRawOutput;
+            if (fullRawOutput.length > MAX_COMMAND_OUTPUT_LENGTH) {
+                displayOutput = fullRawOutput.substring(0, MAX_COMMAND_OUTPUT_LENGTH) + 
+                    `\n\n${t('commandOutputTruncated', { length: fullRawOutput.length, max: MAX_COMMAND_OUTPUT_LENGTH })}`;
+            }
+            
             console.log(chalk.grey(t('commandRawOutputTitle')));
-            console.log(chalk.grey(fullRawOutput.substring(0, 500) + (fullRawOutput.length > 500 ? '...' : '')));
+            console.log(chalk.grey(displayOutput.substring(0, 500) + (displayOutput.length > 500 ? '...' : '')));
             console.log(chalk.grey(t('commandRawOutputEnd')));
+            
             if (agentMemoryRef) updateMemory(agentMemoryRef, "Command", command, "Failure", finalStderr);
-            resolve(fullRawOutput.trim());
+            
+            // Retourner la sortie tronquée au lieu de la sortie complète
+            if (fullRawOutput.length > MAX_COMMAND_OUTPUT_LENGTH) {
+                const truncatedOutput = fullRawOutput.substring(0, MAX_COMMAND_OUTPUT_LENGTH) + 
+                    `\n\n${t('commandOutputTruncated', { length: fullRawOutput.length, max: MAX_COMMAND_OUTPUT_LENGTH })}`;
+                resolve(truncatedOutput.trim());
+            } else {
+                resolve(fullRawOutput.trim());
+            }
             // --- End Resolve Logic ---
 
         }, effectiveTimeout);
@@ -163,12 +180,27 @@ export async function runCommand(command: string, purpose: string, timeoutMs?: n
             const finalStderr = `${stderrOutput.trim()} ${timeoutMsg}`.trim();
             fullRawOutput += `${t('commandOutputStderr')}\n${finalStderr}\n`;
 
+            // Tronquer la sortie si elle dépasse MAX_COMMAND_OUTPUT_LENGTH
+            let displayOutput = fullRawOutput;
+            if (fullRawOutput.length > MAX_COMMAND_OUTPUT_LENGTH) {
+                displayOutput = fullRawOutput.substring(0, MAX_COMMAND_OUTPUT_LENGTH) + 
+                    `\n\n${t('commandOutputTruncated', { length: fullRawOutput.length, max: MAX_COMMAND_OUTPUT_LENGTH })}`;
+            }
+
             console.log(chalk.grey(t('commandRawOutputTitle')));
-            console.log(chalk.grey(fullRawOutput.substring(0, 500) + (fullRawOutput.length > 500 ? '...' : '')));
+            console.log(chalk.grey(displayOutput.substring(0, 500) + (displayOutput.length > 500 ? '...' : '')));
             console.log(chalk.grey(t('commandRawOutputEnd')));
 
             if (agentMemoryRef) updateMemory(agentMemoryRef, "Command", command, "Failure", finalStderr);
-            resolve(fullRawOutput.trim());
+            
+            // Retourner la sortie tronquée au lieu de la sortie complète
+            if (fullRawOutput.length > MAX_COMMAND_OUTPUT_LENGTH) {
+                const truncatedOutput = fullRawOutput.substring(0, MAX_COMMAND_OUTPUT_LENGTH) + 
+                    `\n\n${t('commandOutputTruncated', { length: fullRawOutput.length, max: MAX_COMMAND_OUTPUT_LENGTH })}`;
+                resolve(truncatedOutput.trim());
+            } else {
+                resolve(fullRawOutput.trim());
+            }
         });
 
         childProcess.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
@@ -192,14 +224,28 @@ export async function runCommand(command: string, purpose: string, timeoutMs?: n
             if (!fullRawOutput && finalCode !== 0) fullRawOutput = t('commandOutputNoOutputCode', { code: finalCode, signalInfo });
             if (!fullRawOutput && finalCode === 0) fullRawOutput = t('commandOutputNoOutputSuccess');
 
+            // Tronquer la sortie si elle dépasse MAX_COMMAND_OUTPUT_LENGTH
+            let displayOutput = fullRawOutput;
+            if (fullRawOutput.length > MAX_COMMAND_OUTPUT_LENGTH) {
+                displayOutput = fullRawOutput.substring(0, MAX_COMMAND_OUTPUT_LENGTH) + 
+                    `\n\n${t('commandOutputTruncated', { length: fullRawOutput.length, max: MAX_COMMAND_OUTPUT_LENGTH })}`;
+            }
+
             console.log(chalk.grey(t('commandRawOutputTitle')));
-            console.log(chalk.grey(fullRawOutput.substring(0, 500) + (fullRawOutput.length > 500 ? '...' : '')));
+            console.log(chalk.grey(displayOutput.substring(0, 500) + (displayOutput.length > 500 ? '...' : '')));
             console.log(chalk.grey(t('commandRawOutputEnd')));
 
             const finalStatus: ActionStatus = finalCode === 0 ? "Success" : "Failure";
             if (agentMemoryRef) updateMemory(agentMemoryRef, "Command", command, finalStatus, stderrOutput.trim());
 
-            resolve(fullRawOutput.trim());
+            // Retourner la sortie tronquée au lieu de la sortie complète
+            if (fullRawOutput.length > MAX_COMMAND_OUTPUT_LENGTH) {
+                const truncatedOutput = fullRawOutput.substring(0, MAX_COMMAND_OUTPUT_LENGTH) + 
+                    `\n\n${t('commandOutputTruncated', { length: fullRawOutput.length, max: MAX_COMMAND_OUTPUT_LENGTH })}`;
+                resolve(truncatedOutput.trim());
+            } else {
+                resolve(fullRawOutput.trim());
+            }
         });
     });
 }

@@ -20,6 +20,7 @@ import {
     MODEL_NAME,
     HISTORY_FILE,
     MEMORY_FILE,
+    MAX_HISTORY_LENGTH,
     default_system_prompt_template,
     MAX_FEEDBACK_LEN
 } from '../config/config.js';
@@ -73,8 +74,15 @@ const openai = new OpenAI({ apiKey: apiKeyToUse });
 const SCRIPT_FILENAME = path.basename(__filename);
 
 let conversationHistory: ChatMessage[] = [];
-// Initialize agentMemory here to inject it
-let agentMemory: AgentMemory = { system_info: {}, action_log: [], notes: "" };
+// Initialize agentMemory with new hierarchical structure
+let agentMemory: AgentMemory = { 
+    system: { info: {} },
+    logs: { actions: [] },
+    notes: "",
+    // Legacy fields for backward compatibility
+    system_info: {},
+    action_log: []
+};
 
 // Inject references into the tools.js module
 setToolsMemoryRef(agentMemory);
@@ -318,6 +326,106 @@ export async function main() {
         return cleaned;
     }
 
+    // Fonction pour résumer une portion de l'historique de conversation
+    async function summarizeMessages(messages: ChatMessage[]): Promise<string> {
+        // Ne pas essayer de résumer si nous n'avons pas de messages
+        if (messages.length === 0) {
+            return "Pas d'historique à résumer.";
+        }
+
+        // Formater les messages pour le résumé
+        const formattedMessages = messages.map(msg => {
+            let roleEmoji = '';
+            switch (msg.role) {
+                case 'user': roleEmoji = '👤'; break;
+                case 'assistant': roleEmoji = '🤖'; break;
+                case 'tool': roleEmoji = '🛠'; break;
+                default: roleEmoji = '📝';
+            }
+            
+            // Format spécial pour les messages d'outils
+            if (msg.role === 'tool' && msg.tool_call_id) {
+                return `${roleEmoji} Outil [${msg.name || 'sans nom'}]: ${typeof msg.content === 'string' ? msg.content.substring(0, 100) : 'contenu non textuel'}${typeof msg.content === 'string' && msg.content.length > 100 ? '...' : ''}`;
+            }
+            
+            // Format pour les appels d'outils
+            if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+                const toolCallsStr = msg.tool_calls.map(tc => `${tc.function.name}(${tc.function.arguments.substring(0, 50)}${tc.function.arguments.length > 50 ? '...' : ''})`).join(', ');
+                return `${roleEmoji} Assistant appelle: ${toolCallsStr}`;
+            }
+            
+            // Format standard pour les autres messages
+            return `${roleEmoji} ${msg.role.charAt(0).toUpperCase() + msg.role.slice(1)}: ${typeof msg.content === 'string' ? msg.content.substring(0, 150) : 'contenu non textuel'}${typeof msg.content === 'string' && msg.content.length > 150 ? '...' : ''}`;
+        }).join('\n');
+
+        try {
+            // Générer un résumé en utilisant l'API OpenAI
+            console.log(chalk.dim(t('summarizingMessages')));
+            
+            const response = await openai.chat.completions.create({
+                model: "gpt-3.5-turbo", // Modèle moins cher pour le résumé
+                messages: [
+                    {
+                        role: "system",
+                        content: "Tu es un assistant spécialisé dans la synthèse de conversations. Résume les messages suivants de manière concise mais complète. Préserve les informations importantes, le contexte et les décisions prises. Ce résumé sera utilisé pour compresser l'historique d'une conversation tout en maintenant la continuité."
+                    },
+                    {
+                        role: "user",
+                        content: `Résume les messages suivants en français (500 caractères maximum):\n\n${formattedMessages}`
+                    }
+                ],
+                max_tokens: 500
+            });
+
+            const summary = response.choices[0]?.message?.content || "Résumé non disponible.";
+            console.log(chalk.dim(t('summaryGenerated')));
+            
+            // Préfixer le résumé pour indiquer clairement qu'il s'agit d'un résumé
+            return `📝 RÉSUMÉ DES MESSAGES PRÉCÉDENTS: ${summary}`;
+        } catch (error) {
+            console.error(chalk.red(t('summaryError')), error);
+            // En cas d'erreur, créer un résumé basique
+            return `📝 HISTORIQUE RÉSUMÉ: ${messages.length} messages précédents, incluant ${messages.filter(m => m.role === 'user').length} messages utilisateur et ${messages.filter(m => m.role === 'assistant').length} réponses assistant.`;
+        }
+    }
+
+    async function trimConversationHistory(history: ChatMessage[]): Promise<ChatMessage[]> {
+        if (history.length <= MAX_HISTORY_LENGTH) {
+            return history; // Pas besoin de tronquer
+        }
+        
+        // Toujours conserver le message système (premier message)
+        // Vérifier que history[0] existe et a bien un rôle 'system'
+        const systemMessage: ChatMessage = history.length > 0 && history[0]?.role === 'system' 
+            ? history[0] 
+            : { role: 'system' as const, content: final_system_prompt };
+        
+        // Si nous avons dépassé la limite de longueur
+        if (history.length > MAX_HISTORY_LENGTH) {
+            // Garder les 90 messages les plus récents (10 messages de marge avant d'atteindre MAX_HISTORY_LENGTH)
+            if (history.length > MAX_HISTORY_LENGTH - 10) {
+                // Extraire les messages à résumer (les 10 plus anciens, après le message système)
+                const messagesToSummarize = history.slice(1, 11);
+                
+                // Résumer ces messages
+                const summary = await summarizeMessages(messagesToSummarize);
+                
+                // Créer un nouveau message utilisateur contenant le résumé
+                const summaryMessage: ChatMessage = {
+                    role: 'user',
+                    content: summary
+                };
+                
+                // Reconstruire l'historique: message système + résumé + messages restants
+                return [systemMessage, summaryMessage, ...history.slice(11)];
+            }
+        }
+        
+        // Comportement par défaut (ne devrait pas être atteint avec notre logique)
+        const recentMessages = history.slice(-(MAX_HISTORY_LENGTH - 1));
+        return [systemMessage, ...recentMessages];
+    }
+
     // Main loop
     while (true) {
         try {
@@ -374,6 +482,9 @@ export async function main() {
                 }
                 conversationHistory.push({ role: "user", content: userMessageContent });
             }
+
+            // Trim conversation history to avoid excessive growth
+            conversationHistory = await trimConversationHistory(conversationHistory);
 
             let needsApiCall = true;
             while(needsApiCall) {
@@ -552,7 +663,7 @@ export async function main() {
                                 if (functionName === 'run_bash_command' || functionName === 'write_file') {
                                     confirmationPending = true;
                                     if (functionName === 'run_bash_command' && functionArgs.command && functionArgs.purpose) {
-                                        functionResponse = await functionToCall(functionArgs.command, functionArgs.purpose);
+                                        functionResponse = await functionToCall(functionArgs.command, functionArgs.purpose, functionArgs.timeoutMs);
                                     } else if (functionName === 'write_file' && functionArgs.filepath && functionArgs.content) {
                                         functionResponse = await functionToCall(functionArgs.filepath, functionArgs.content);
                                     } else {
